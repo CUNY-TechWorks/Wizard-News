@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const morgan = require('morgan');
 
-const postBank = require("./postBank.js");
+const { client } = require("./db/index");
 const postList = require("./views/postList");
 const postDetails = require("./views/postDetails");
 const html = require("html-template-tag");
@@ -13,10 +13,15 @@ app.use(express.static(__dirname + "/public"));
 app.use("/posts/:id", express.static(__dirname + "/public"));
 // 
 
-app.get("/", (req, res, next) => {
-   const posts = postBank.list();
-
-   res.send(postList(posts));
+app.get("/", async (req, res, next) => {
+   try {
+    const data = await client.query(`SELECT * FROM posts`);
+    
+    res.send(postList(data.rows));
+   }
+   catch(err) {
+     next(err);
+   }
 });
 
 app.get("/posts/:id", (req,res,next) => {
