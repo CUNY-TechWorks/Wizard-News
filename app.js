@@ -2,37 +2,66 @@ const express = require("express");
 const app = express();
 const morgan = require('morgan');
 
-const { client } = require("./db/index");
-const postList = require("./views/postList");
-const postDetails = require("./views/postDetails");
+const postList = require('./views/postList');
+const postDetails = require('./views/postDetails');
+
+const client = require("./db/index");
 const html = require("html-template-tag");
 
 // middle ware
 app.use(morgan("dev"));
 app.use(express.static(__dirname + "/public"));
 app.use("/posts/:id", express.static(__dirname + "/public"));
-// 
 
+// include the number of upvotes for each post 
 app.get("/", async (req, res, next) => {
    try {
-    const data = await client.query(`SELECT * FROM posts`);
+    // subquery or inner query to include upvotes from upvotes junction table (many-to-many relation).
+    const postData = await client.query(`
+         SELECT posts.*, counting.upvotes
+         FROM posts
+         INNER JOIN (SELECT postId, COUNT(*) as upvotes FROM upvotes GROUP BY postId) AS counting
+         ON posts.id = counting.postId; 
+    `);
+
+    const posts = postData.rows;
+
+    const userData = await client.query('SELECT * FROM users');
     
-    res.send(postList(data.rows));
+    const authors = userData.rows;
+    
+    res.send(postList(posts, authors));
    }
    catch(err) {
+     console.log(err.message);
      next(err);
    }
 });
 
-app.get("/posts/:id", (req,res,next) => {
-   const id = req.params.id;
-   const post = postBank.find(id);
-  
-   if(!post.id) {
-     next(new Error('A 404 error'));
+app.get("/posts/:id", async (req,res,next) => {
+   try {
+      const id = req.params.id;
+
+      const data = await client.query(`
+         SELECT posts.*, counting.upvotes
+         FROM posts
+         INNER JOIN (SELECT postId, COUNT(*) as upvotes FROM upvotes GROUP BY postId) AS counting
+         ON posts.id = counting.postId
+         WHERE id=$1;
+      `, [`${id}`]);
+      
+      // just one post in the array
+      const post = data.rows[0];
+
+      const userData = await client.query('SELECT * FROM users');
+    
+      const authors = userData.rows;
+      
+      res.send(postDetails(post, authors));
    }
-   else {
-     res.send(postDetails(post));
+   catch(err) {
+      console.log(err);
+      next(err);
    }
 });
 
